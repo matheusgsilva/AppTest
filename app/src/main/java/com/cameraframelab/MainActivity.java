@@ -32,7 +32,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
     private static final long SUITE_RECORD_MS = 10_000L;
     private static final long SUITE_COOLDOWN_MS = 2_000L;
 
-    private final Handler main = new Handler(Looper.getMainLooper());
+    private Handler main;
     private CameraManager cameraManager;
     private CameraCapabilities capabilities;
     private CameraRecorder recorder;
@@ -57,12 +57,26 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        CrashReporter.install(getApplicationContext());
+        main = new Handler(Looper.getMainLooper());
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-        buildUi();
-        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
-        } else {
-            refreshCapabilities();
+        try {
+            buildUi();
+            String lastCrash = CrashReporter.readLastCrash(this);
+            if (lastCrash != null && !lastCrash.isEmpty()) {
+                capsText.setText("Previous crash detected:\n\n" + lastCrash + "\n\nTap Refresh capabilities to continue.");
+                status.setText("Previous crash recovered. Camera is not opened automatically.");
+            } else {
+                status.setText("Ready. Tap Refresh capabilities to load the camera.");
+            }
+        } catch (Throwable t) {
+            try {
+                setContentView(new TextView(this) {{
+                    setText("CameraFrameLab startup error:\n\n" + android.util.Log.getStackTraceString(t));
+                    setTextSize(12);
+                    setPadding(24,24,24,24);
+                }});
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -111,7 +125,13 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
 
         setContentView(root);
 
-        refreshButton.setOnClickListener(v -> refreshCapabilities());
+        refreshButton.setOnClickListener(v -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
+            } else {
+                refreshCapabilities();
+            }
+        });
         startButton.setOnClickListener(v -> startSelected());
         stopButton.setOnClickListener(v -> stopCurrent());
         suiteButton.setOnClickListener(v -> { if (suiteRunning) cancelSuite(); else startSuite(); });
