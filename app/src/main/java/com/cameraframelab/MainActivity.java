@@ -191,7 +191,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         if (suiteIndex >= suiteQueue.size()) {
             suiteRunning = false;
             suiteButton.setText("Run automatic suite");
-            status.setText("Suite complete. Reports: DCIM/CameraFrameLab · Videos: Movies/CameraFrameLab");
+            status.setText("Suite complete. Files: DCIM/CameraFrameLab");
             updateButtons();
             return;
         }
@@ -237,7 +237,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
                         status.setText("Saved report. Cooling briefly before next test...");
                         main.postDelayed(this::runNextSuiteProfile, SUITE_COOLDOWN_MS);
                     } else {
-                        status.setText("Saved. Reports: DCIM/CameraFrameLab · Video: Movies/CameraFrameLab");
+                        status.setText("Saved. Files: DCIM/CameraFrameLab");
                     }
                 });
             } catch (Throwable t) {
