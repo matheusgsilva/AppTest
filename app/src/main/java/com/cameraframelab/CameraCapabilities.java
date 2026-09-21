@@ -54,6 +54,7 @@ public final class CameraCapabilities {
         boolean has1080 = hasSize(map.getOutputSizes(MediaCodec.class), new Size(1920,1080));
         boolean fixed60 = supportsRange(aeRanges, 60, 60);
         boolean flexible60 = supportsContainingRange(aeRanges, 60);
+        boolean regular60 = fixed60 || flexible60;
         boolean highSpeed4k60 = supportsHighSpeed(map, new Size(3840,2160), 60);
         boolean highSpeed1080p60 = supportsHighSpeed(map, new Size(1920,1080), 60);
 
@@ -69,7 +70,7 @@ public final class CameraCapabilities {
         if (has1080 && (fixed60 || flexible60 || highSpeed1080p60)) {
             TestProfile p = TestProfile.baseline(
                     "1080p_60_control",
-                    new Size(1920,1080), 60, true, highSpeed1080p60,
+                    new Size(1920,1080), 60, true, !regular60 && highSpeed1080p60,
                     28_000_000
             );
             profiles.add(p);
@@ -86,12 +87,12 @@ public final class CameraCapabilities {
         if (has4k && (fixed60 || flexible60 || highSpeed4k60) && avc4k60) {
             TestProfile basePreview = TestProfile.baseline(
                     "2160p_60_baseline_preview",
-                    new Size(3840,2160), 60, true, highSpeed4k60,
+                    new Size(3840,2160), 60, true, !regular60 && highSpeed4k60,
                     80_000_000
             );
             TestProfile baseNoPreview = TestProfile.baseline(
                     "2160p_60_baseline_nopreview",
-                    new Size(3840,2160), 60, false, highSpeed4k60,
+                    new Size(3840,2160), 60, false, !regular60 && highSpeed4k60,
                     80_000_000
             );
             profiles.add(basePreview);
@@ -155,6 +156,18 @@ public final class CameraCapabilities {
                         "2160p_60_ae_" + alt.getLower() + "_" + alt.getUpper(),
                         MediaFormat.MIMETYPE_VIDEO_AVC, 80_000_000,
                         alt.getLower(), alt.getUpper(),
+                        0,0,
+                        CameraDevice.TEMPLATE_RECORD
+                ));
+            }
+
+            if (regular60 && highSpeed4k60) {
+                profiles.add(new TestProfile(
+                        "2160p_60_highspeed_session",
+                        new Size(3840,2160), 60, true, true,
+                        MediaFormat.MIMETYPE_VIDEO_AVC,
+                        80_000_000,
+                        60,60,
                         0,0,
                         CameraDevice.TEMPLATE_RECORD
                 ));
