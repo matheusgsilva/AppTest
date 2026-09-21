@@ -70,6 +70,20 @@ public final class MetricCollector {
         }
     }
 
+    public static final class EventSample {
+        public final long elapsedNs;
+        public final String source;
+        public final String type;
+        public final String detail;
+
+        EventSample(long elapsedNs, String source, String type, String detail) {
+            this.elapsedNs = elapsedNs;
+            this.source = source;
+            this.type = type;
+            this.detail = detail;
+        }
+    }
+
     public static final class ThermalSample {
         public final long elapsedNs;
         public final int thermalStatus;
@@ -89,6 +103,7 @@ public final class MetricCollector {
     private final List<CameraSample> camera = new ArrayList<>();
     private final List<EncoderSample> encoder = new ArrayList<>();
     private final List<ThermalSample> thermal = new ArrayList<>();
+    private final List<EventSample> events = new ArrayList<>();
 
     public synchronized void addCamera(
             long frameNumber,
@@ -129,7 +144,17 @@ public final class MetricCollector {
         ));
     }
 
+    public synchronized void addEvent(String source, String type, String detail) {
+        events.add(new EventSample(
+                SystemClock.elapsedRealtimeNanos(),
+                source == null ? "" : source,
+                type == null ? "" : type,
+                detail == null ? "" : detail
+        ));
+    }
+
     public synchronized List<CameraSample> cameraSnapshot() { return new ArrayList<>(camera); }
     public synchronized List<EncoderSample> encoderSnapshot() { return new ArrayList<>(encoder); }
     public synchronized List<ThermalSample> thermalSnapshot() { return new ArrayList<>(thermal); }
+    public synchronized List<EventSample> eventSnapshot() { return new ArrayList<>(events); }
 }
