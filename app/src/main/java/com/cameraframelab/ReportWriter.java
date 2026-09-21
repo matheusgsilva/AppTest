@@ -127,6 +127,7 @@ public final class ReportWriter {
         List<MetricCollector.CameraSample> camera = session.metrics.cameraSnapshot();
         List<MetricCollector.EncoderSample> encoder = session.metrics.encoderSnapshot();
         List<MetricCollector.ThermalSample> thermal = session.metrics.thermalSnapshot();
+        List<MetricCollector.EventSample> internalEvents = session.metrics.eventSnapshot();
 
         List<Long> sensorTs = new ArrayList<>();
         for (MetricCollector.CameraSample s : camera) sensorTs.add(s.sensorTimestampNs);
@@ -163,13 +164,14 @@ public final class ReportWriter {
         root.put("cameraGapEvents", cameraGapEventsJson(camera, profile.fps));
         root.put("encoderGapEvents", encoderGapEventsJson(encoder, profile.fps));
         root.put("gapCorrelation", gapCorrelationJson(camera, encoder, profile.fps));
+        root.put("internalEvents", internalEventsJson(internalEvents));
         root.put("diagnosisHint", diagnosis(cameraStats, encoderStats));
 
         Uri summary = writeSharedFile(context, session.baseName + "_summary.json", "application/json", root.toString(2));
         Uri cameraCsv = writeSharedFile(context, session.baseName + "_camera.csv", "text/csv", cameraCsv(camera, profile.fps));
         Uri encoderCsv = writeSharedFile(context, session.baseName + "_encoder.csv", "text/csv", encoderCsv(encoder, profile.fps));
         Uri thermalCsv = writeSharedFile(context, session.baseName + "_thermal.csv", "text/csv", thermalCsv(thermal));
-        Uri eventsCsv = writeSharedFile(context, session.baseName + "_events.csv", "text/csv", eventsCsv(camera, encoder, profile.fps));
+        Uri eventsCsv = writeSharedFile(context, session.baseName + "_events.csv", "text/csv", eventsCsv(camera, encoder, internalEvents, profile.fps));
 
         return new ReportResult(
                 summary, cameraCsv, encoderCsv, thermalCsv, eventsCsv,
@@ -330,6 +332,19 @@ public final class ReportWriter {
             o.put("batteryTempC", s.batteryTempC);
             o.put("availableMemoryBytes", s.availableMemoryBytes);
             o.put("appPssKb", s.appPssKb);
+            a.put(o);
+        }
+        return a;
+    }
+
+    private static JSONArray internalEventsJson(List<MetricCollector.EventSample> events) throws Exception {
+        JSONArray a = new JSONArray();
+        for (MetricCollector.EventSample e : events) {
+            JSONObject o = new JSONObject();
+            o.put("elapsedNs", e.elapsedNs);
+            o.put("source", e.source);
+            o.put("type", e.type);
+            o.put("detail", e.detail);
             a.put(o);
         }
         return a;
@@ -537,6 +552,7 @@ public final class ReportWriter {
     private static String eventsCsv(
             List<MetricCollector.CameraSample> camera,
             List<MetricCollector.EncoderSample> encoder,
+            List<MetricCollector.EventSample> internalEvents,
             int fps
     ) {
         StringBuilder b = new StringBuilder(
@@ -586,6 +602,21 @@ public final class ReportWriter {
                         .append(";dequeueWaitUs=").append(cur.dequeueWaitUs)
                         .append('"').append('\n');
             }
+        }
+
+        for (MetricCollector.EventSample e : internalEvents) {
+            b.append("internal,")
+                    .append(-1).append(',')
+                    .append(e.elapsedNs / 1_000_000_000.0).append(',')
+                    .append(0).append(',')
+                    .append(0).append(',')
+                    .append('"')
+                    .append(e.source.replace(""", "'"))
+                    .append(":")
+                    .append(e.type.replace(""", "'"))
+                    .append(";")
+                    .append(e.detail.replace(""", "'"))
+                    .append('"').append('\n');
         }
         return b.toString();
     }
