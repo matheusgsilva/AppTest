@@ -50,12 +50,19 @@ public final class CameraRecorder {
         public final MetricCollector metrics;
         public final long startElapsedNs;
         public final long endElapsedNs;
-        SessionResult(String baseName, Uri videoUri, MetricCollector metrics, long startElapsedNs, long endElapsedNs) {
+        public final String encoderName;
+        public final String encoderOutputFormat;
+        public final String requestDescription;
+        SessionResult(String baseName, Uri videoUri, MetricCollector metrics, long startElapsedNs, long endElapsedNs,
+                      String encoderName, String encoderOutputFormat, String requestDescription) {
             this.baseName = baseName;
             this.videoUri = videoUri;
             this.metrics = metrics;
             this.startElapsedNs = startElapsedNs;
             this.endElapsedNs = endElapsedNs;
+            this.encoderName = encoderName;
+            this.encoderOutputFormat = encoderOutputFormat;
+            this.requestDescription = requestDescription;
         }
     }
 
@@ -85,6 +92,9 @@ public final class CameraRecorder {
     private long startElapsedNs;
     private boolean muxerStarted;
     private int videoTrack = -1;
+    private String encoderName = "";
+    private String encoderOutputFormat = "";
+    private String requestDescription = "";
 
     public CameraRecorder(Activity activity, CameraManager manager, TextureView textureView, Handler mainHandler, Listener listener) {
         this.activity = activity;
@@ -96,9 +106,9 @@ public final class CameraRecorder {
 
     public boolean isRunning() { return camera != null || codec != null; }
 
-    public void addThermalSample(int status, float batteryTempC) {
+    public void addThermalSample(int status, float batteryTempC, long availableMemoryBytes, int appPssKb) {
         MetricCollector c = collector;
-        if (c != null) c.addThermal(status, batteryTempC);
+        if (c != null) c.addThermal(status, batteryTempC, availableMemoryBytes, appPssKb);
     }
 
     @SuppressLint("MissingPermission")
@@ -146,7 +156,10 @@ public final class CameraRecorder {
                 }
                 finishResources(false);
                 long end = android.os.SystemClock.elapsedRealtimeNanos();
-                SessionResult result = new SessionResult(baseName, outputUri, collector, startElapsedNs, end);
+                SessionResult result = new SessionResult(
+                        baseName, outputUri, collector, startElapsedNs, end,
+                        encoderName, encoderOutputFormat, requestDescription
+                );
                 mainHandler.post(() -> listener.onStopped(result));
             } catch (Throwable t) {
                 fail(t);
@@ -171,16 +184,17 @@ public final class CameraRecorder {
     private void prepareEncoder() throws IOException {
         int w = profile.size.getWidth();
         int h = profile.size.getHeight();
-        String mime = MediaFormat.MIMETYPE_VIDEO_AVC;
+        String mime = profile.codecMime;
         MediaFormat format = MediaFormat.createVideoFormat(mime, w, h);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, profile.fps);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, bitrateFor(w, h, profile.fps));
+        format.setInteger(MediaFormat.KEY_BIT_RATE, profile.bitrate);
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
         format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0);
         format.setFloat(MediaFormat.KEY_OPERATING_RATE, profile.fps);
         codec = MediaCodec.createEncoderByType(mime);
+        encoderName = codec.getName();
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         codecSurface = codec.createInputSurface();
         codec.start();
@@ -231,13 +245,22 @@ public final class CameraRecorder {
         @Override public void onConfigured(CameraCaptureSession s) {
             session = s;
             try {
-                CaptureRequest.Builder b = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                CaptureRequest.Builder b = camera.createCaptureRequest(profile.cameraTemplate);
                 b.addTarget(codecSurface);
                 if (profile.preview && previewSurface != null) b.addTarget(previewSurface);
-                b.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(profile.fps, profile.fps));
-                try { b.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF); } catch (Throwable ignored) {}
-                try { b.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF); } catch (Throwable ignored) {}
+                b.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(profile.aeLowerFps, profile.aeUpperFps));
+                try { b.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, profile.videoStabilizationMode); } catch (Throwable ignored) {}
+                try { b.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, profile.opticalStabilizationMode); } catch (Throwable ignored) {}
                 CaptureRequest request = b.build();
+                requestDescription =
+                        "template=" + profile.templateLabel() +
+                        "; ae=[" + profile.aeLowerFps + "," + profile.aeUpperFps + "]" +
+                        "; eis=" + profile.videoStabilizationMode +
+                        "; ois=" + profile.opticalStabilizationMode +
+                        "; preview=" + profile.preview +
+                        "; highSpeed=" + profile.highSpeed +
+                        "; codec=" + profile.codecLabel() +
+                        "; bitrate=" + profile.bitrate;
                 if (profile.highSpeed && s instanceof CameraConstrainedHighSpeedCaptureSession) {
                     List<CaptureRequest> burst = ((CameraConstrainedHighSpeedCaptureSession) s).createHighSpeedRequestList(request);
                     ((CameraConstrainedHighSpeedCaptureSession) s).setRepeatingBurst(burst, captureCallback, cameraHandler);
@@ -258,7 +281,31 @@ public final class CameraRecorder {
     private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
             Long sensorTs = result.get(TotalCaptureResult.SENSOR_TIMESTAMP);
-            if (sensorTs != null && collector != null) collector.addCamera(result.getFrameNumber(), sensorTs);
+            if (sensorTs == null || collector == null) return;
+
+            Long exposure = result.get(TotalCaptureResult.SENSOR_EXPOSURE_TIME);
+            Long frameDuration = result.get(TotalCaptureResult.SENSOR_FRAME_DURATION);
+            Integer iso = result.get(TotalCaptureResult.SENSOR_SENSITIVITY);
+            Integer ae = result.get(TotalCaptureResult.CONTROL_AE_STATE);
+            Integer af = result.get(TotalCaptureResult.CONTROL_AF_STATE);
+            Integer awb = result.get(TotalCaptureResult.CONTROL_AWB_STATE);
+            Integer eis = result.get(TotalCaptureResult.CONTROL_VIDEO_STABILIZATION_MODE);
+            Integer ois = result.get(TotalCaptureResult.LENS_OPTICAL_STABILIZATION_MODE);
+            Float focal = result.get(TotalCaptureResult.LENS_FOCAL_LENGTH);
+
+            collector.addCamera(
+                    result.getFrameNumber(),
+                    sensorTs,
+                    exposure == null ? -1L : exposure,
+                    frameDuration == null ? -1L : frameDuration,
+                    iso == null ? -1 : iso,
+                    ae == null ? -1 : ae,
+                    af == null ? -1 : af,
+                    awb == null ? -1 : awb,
+                    eis == null ? -1 : eis,
+                    ois == null ? -1 : ois,
+                    focal == null ? Float.NaN : focal
+            );
         }
     };
 
@@ -266,11 +313,14 @@ public final class CameraRecorder {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         try {
             while (drainRunning.get()) {
+                long dequeueStartNs = android.os.SystemClock.elapsedRealtimeNanos();
                 int index = codec.dequeueOutputBuffer(info, 20_000);
+                long dequeueWaitUs = (android.os.SystemClock.elapsedRealtimeNanos() - dequeueStartNs) / 1000L;
                 if (index == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     if (eosRequested.get()) continue;
                 } else if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     if (muxerStarted) throw new IllegalStateException("Encoder format changed twice");
+                    encoderOutputFormat = String.valueOf(codec.getOutputFormat());
                     videoTrack = muxer.addTrack(codec.getOutputFormat());
                     muxer.start();
                     muxerStarted = true;
@@ -283,7 +333,7 @@ public final class CameraRecorder {
                         data.position(info.offset);
                         data.limit(info.offset + info.size);
                         muxer.writeSampleData(videoTrack, data, info);
-                        if (collector != null) collector.addEncoder(info.presentationTimeUs, info.size, info.flags);
+                        if (collector != null) collector.addEncoder(info.presentationTimeUs, info.size, info.flags, dequeueWaitUs);
                     }
                     boolean eos = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
                     codec.releaseOutputBuffer(index, false);
