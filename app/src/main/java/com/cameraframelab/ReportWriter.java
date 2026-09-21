@@ -152,17 +152,30 @@ public final class ReportWriter {
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
         values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/CameraFrameLab");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/CameraFrameLab/");
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+        Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        Uri uri = resolver.insert(collection, values);
         if (uri == null) throw new IllegalStateException("Could not create report " + name);
-        try (OutputStream os = resolver.openOutputStream(uri, "w")) {
-            if (os == null) throw new IllegalStateException("Could not open report " + name);
-            os.write(body.getBytes(StandardCharsets.UTF_8));
+
+        boolean completed = false;
+        try {
+            try (OutputStream os = resolver.openOutputStream(uri)) {
+                if (os == null) throw new IllegalStateException("Could not open report " + name);
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+
+            ContentValues done = new ContentValues();
+            done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            resolver.update(uri, done, null, null);
+            completed = true;
+            return uri;
+        } finally {
+            if (!completed) {
+                try { resolver.delete(uri, null, null); } catch (Throwable ignored) {}
+            }
         }
-        ContentValues done = new ContentValues();
-        done.put(MediaStore.MediaColumns.IS_PENDING, 0);
-        resolver.update(uri, done, null, null);
-        return uri;
     }
 }
