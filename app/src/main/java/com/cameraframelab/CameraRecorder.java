@@ -128,6 +128,7 @@ public final class CameraRecorder {
             cameraThread = new HandlerThread("CameraFrameLab-Camera");
             cameraThread.start();
             cameraHandler = new Handler(cameraThread.getLooper());
+            collector.addEvent("camera", "OPEN_REQUESTED", "cameraId=" + caps.cameraId);
             manager.openCamera(caps.cameraId, cameraStateCallback, cameraHandler);
         } catch (Throwable t) {
             fail(t);
@@ -212,6 +213,7 @@ public final class CameraRecorder {
     private final CameraDevice.StateCallback cameraStateCallback = new CameraDevice.StateCallback() {
         @Override public void onOpened(CameraDevice cameraDevice) {
             camera = cameraDevice;
+            if (collector != null) collector.addEvent("camera", "OPENED", cameraDevice.getId());
             try { createSession(); } catch (Throwable t) { fail(t); }
         }
         @Override public void onDisconnected(CameraDevice cameraDevice) {
@@ -244,6 +246,10 @@ public final class CameraRecorder {
     private final CameraCaptureSession.StateCallback sessionStateCallback = new CameraCaptureSession.StateCallback() {
         @Override public void onConfigured(CameraCaptureSession s) {
             session = s;
+            if (collector != null) collector.addEvent(
+                    "camera", "SESSION_CONFIGURED",
+                    "highSpeed=" + profile.highSpeed + "; preview=" + profile.preview
+            );
             try {
                 CaptureRequest.Builder b = camera.createCaptureRequest(profile.cameraTemplate);
                 b.addTarget(codecSurface);
@@ -261,6 +267,7 @@ public final class CameraRecorder {
                         "; highSpeed=" + profile.highSpeed +
                         "; codec=" + profile.codecLabel() +
                         "; bitrate=" + profile.bitrate;
+                if (collector != null) collector.addEvent("camera", "REQUEST_READY", requestDescription);
                 if (profile.highSpeed && s instanceof CameraConstrainedHighSpeedCaptureSession) {
                     List<CaptureRequest> burst = ((CameraConstrainedHighSpeedCaptureSession) s).createHighSpeedRequestList(request);
                     ((CameraConstrainedHighSpeedCaptureSession) s).setRepeatingBurst(burst, captureCallback, cameraHandler);
@@ -274,6 +281,7 @@ public final class CameraRecorder {
             } catch (Throwable t) { fail(t); }
         }
         @Override public void onConfigureFailed(CameraCaptureSession s) {
+            if (collector != null) collector.addEvent("camera", "SESSION_CONFIGURE_FAILED", "");
             fail(new RuntimeException("CameraCaptureSession configuration failed"));
         }
     };
@@ -307,6 +315,29 @@ public final class CameraRecorder {
                     focal == null ? Float.NaN : focal
             );
         }
+
+        @Override public void onCaptureFailed(
+                CameraCaptureSession session,
+                CaptureRequest request,
+                android.hardware.camera2.CaptureFailure failure
+        ) {
+            if (collector != null) {
+                collector.addEvent(
+                        "camera",
+                        "CAPTURE_FAILED",
+                        "reason=" + failure.getReason() +
+                                "; frameNumber=" + failure.getFrameNumber() +
+                                "; sequenceId=" + failure.getSequenceId() +
+                                "; imageCaptured=" + failure.wasImageCaptured()
+                );
+            }
+        }
+
+        @Override public void onCaptureSequenceAborted(CameraCaptureSession session, int sequenceId) {
+            if (collector != null) {
+                collector.addEvent("camera", "SEQUENCE_ABORTED", "sequenceId=" + sequenceId);
+            }
+        }
     };
 
     private void drainEncoder() {
@@ -321,6 +352,10 @@ public final class CameraRecorder {
                 } else if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     if (muxerStarted) throw new IllegalStateException("Encoder format changed twice");
                     encoderOutputFormat = String.valueOf(codec.getOutputFormat());
+                    if (collector != null) collector.addEvent(
+                            "encoder", "OUTPUT_FORMAT_CHANGED",
+                            "name=" + encoderName + "; format=" + encoderOutputFormat
+                    );
                     videoTrack = muxer.addTrack(codec.getOutputFormat());
                     muxer.start();
                     muxerStarted = true;
@@ -337,10 +372,17 @@ public final class CameraRecorder {
                     }
                     boolean eos = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
                     codec.releaseOutputBuffer(index, false);
-                    if (eos) break;
+                    if (eos) {
+                        if (collector != null) collector.addEvent("encoder", "EOS", "");
+                        break;
+                    }
                 }
             }
         } catch (Throwable t) {
+            if (collector != null) collector.addEvent(
+                    "encoder", "ERROR",
+                    t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage())
+            );
             mainHandler.post(() -> listener.onStatus("Encoder error: " + t.getMessage()));
         } finally {
             drainRunning.set(false);
