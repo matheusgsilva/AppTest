@@ -256,8 +256,9 @@ public final class CameraCapabilities {
                 for (String type : info.getSupportedTypes()) {
                     if (!type.equalsIgnoreCase(mime)) continue;
                     MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(type);
-                    if (caps.videoCapabilities != null &&
-                            caps.videoCapabilities.areSizeAndRateSupported(width, height, fps)) {
+                    MediaCodecInfo.VideoCapabilities videoCaps = caps.getVideoCapabilities();
+                    if (videoCaps != null &&
+                            videoCaps.areSizeAndRateSupported(width, height, fps)) {
                         return true;
                     }
                 }
