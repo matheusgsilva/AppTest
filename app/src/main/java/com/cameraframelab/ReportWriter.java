@@ -75,10 +75,10 @@ public final class ReportWriter {
         root.put("thermalSamples", thermalJson(thermal));
         root.put("diagnosisHint", diagnosis(cameraStats, encoderStats));
 
-        Uri summary = writeDownload(context, session.baseName + "_summary.json", "application/json", root.toString(2));
-        Uri cameraCsv = writeDownload(context, session.baseName + "_camera.csv", "text/csv", cameraCsv(camera));
-        Uri encoderCsv = writeDownload(context, session.baseName + "_encoder.csv", "text/csv", encoderCsv(encoder));
-        Uri thermalCsv = writeDownload(context, session.baseName + "_thermal.csv", "text/csv", thermalCsv(thermal));
+        Uri summary = writeDcim(context, session.baseName + "_summary.json", "application/json", root.toString(2));
+        Uri cameraCsv = writeDcim(context, session.baseName + "_camera.csv", "text/csv", cameraCsv(camera));
+        Uri encoderCsv = writeDcim(context, session.baseName + "_encoder.csv", "text/csv", encoderCsv(encoder));
+        Uri thermalCsv = writeDcim(context, session.baseName + "_thermal.csv", "text/csv", thermalCsv(thermal));
         return new ReportResult(summary, cameraCsv, encoderCsv, thermalCsv, cameraStats, encoderStats, repeatedPts);
     }
 
@@ -147,20 +147,22 @@ public final class ReportWriter {
         return b.toString();
     }
 
-    private static Uri writeDownload(Context context, String name, String mime, String body) throws Exception {
+    private static Uri writeDcim(Context context, String name, String mime, String body) throws Exception {
         ContentResolver resolver = context.getContentResolver();
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
         values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/CameraFrameLab");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/CameraFrameLab");
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        Uri uri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
         if (uri == null) throw new IllegalStateException("Could not create report " + name);
         try (OutputStream os = resolver.openOutputStream(uri, "w")) {
             if (os == null) throw new IllegalStateException("Could not open report " + name);
             os.write(body.getBytes(StandardCharsets.UTF_8));
         }
-        ContentValues done = new ContentValues(); done.put(MediaStore.MediaColumns.IS_PENDING, 0); resolver.update(uri, done, null, null);
+        ContentValues done = new ContentValues();
+        done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+        resolver.update(uri, done, null, null);
         return uri;
     }
 }
