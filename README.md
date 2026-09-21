@@ -21,7 +21,7 @@ No interpolation, frame repair, OpenCV, vault, background service, audio, or pos
 2. Tap **Refresh capabilities**.
 3. Run the automatic suite once with the phone cool and unplugged.
 4. Repeat the suite after 5-10 minutes of continuous camera use if you want to compare thermal behavior.
-5. The MP4 plus CSV/JSON reports are written to visible folders under `Movies/CameraFrameLab` and `DCIM/CameraFrameLab`.
+5. The MP4 plus CSV/JSON reports are all written together under `DCIM/CameraFrameLab`.
 
 The suite only starts configurations the device reports as supported. It focuses on 1080p30, 1080p60, 4K30 and 4K60, with preview ON/OFF variants for 60 fps when possible.
 
