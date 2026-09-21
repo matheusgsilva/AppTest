@@ -15,7 +15,7 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.6'
+          gradle-version: '9.6.0'
       - name: Unit test interval analyzer
         run: |
           mkdir -p build/pure-java-test
