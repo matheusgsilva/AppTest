@@ -1,0 +1,29 @@
+name: Android build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6'
+      - name: Unit test interval analyzer
+        run: |
+          mkdir -p build/pure-java-test
+          javac -d build/pure-java-test app/src/main/java/com/cameraframelab/IntervalAnalyzer.java app/src/test/java/com/cameraframelab/IntervalAnalyzerTest.java
+          java -cp build/pure-java-test com.cameraframelab.IntervalAnalyzerTest
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CameraFrameLab-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
