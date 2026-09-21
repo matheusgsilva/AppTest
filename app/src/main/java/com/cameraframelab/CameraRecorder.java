@@ -159,9 +159,9 @@ public final class CameraRecorder {
         ContentValues values = new ContentValues();
         values.put(MediaStore.Video.Media.DISPLAY_NAME, baseName + ".mp4");
         values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
-        values.put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/CameraFrameLab");
-        values.put(MediaStore.Video.Media.IS_PENDING, 1);
-        outputUri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/CameraFrameLab");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        outputUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
         if (outputUri == null) throw new IOException("Could not create MediaStore video");
         outputPfd = resolver.openFileDescriptor(outputUri, "rw");
         if (outputPfd == null) throw new IOException("Could not open video file descriptor");
