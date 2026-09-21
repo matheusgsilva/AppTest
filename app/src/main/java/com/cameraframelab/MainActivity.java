@@ -53,6 +53,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
     private TestProfile activeProfile;
     private boolean suiteRunning;
     private final List<TestProfile> suiteQueue = new ArrayList<>();
+    private final List<ReportWriter.SuiteEntry> suiteResults = new ArrayList<>();
     private int suiteIndex;
     private Runnable liveTicker;
     private Runnable suiteStopper;
@@ -200,6 +201,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         if (capabilities == null || capabilities.profiles.isEmpty() || (recorder != null && recorder.isRunning())) return;
         suiteQueue.clear();
         suiteQueue.addAll(capabilities.profiles);
+        suiteResults.clear();
         suiteIndex = 0;
         suiteRunning = true;
         suiteButton.setText("Suite running");
@@ -223,8 +225,18 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         if (suiteIndex >= suiteQueue.size()) {
             suiteRunning = false;
             suiteButton.setText("Run automatic suite");
-            status.setText("Suite complete. Files: Download/CameraFrameLab");
+            status.setText("Suite complete. Writing aggregate summary...");
             updateButtons();
+            new Thread(() -> {
+                try {
+                    ReportWriter.writeSuiteSummary(this, new ArrayList<>(suiteResults));
+                    main.post(() -> status.setText(
+                            "Suite complete. Reports + suite summary: Download/CameraFrameLab"
+                    ));
+                } catch (Throwable t) {
+                    main.post(() -> showError(t));
+                }
+            }, "SuiteSummary").start();
             return;
         }
         TestProfile p = suiteQueue.get(suiteIndex);
@@ -256,6 +268,9 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         new Thread(() -> {
             try {
                 ReportWriter.ReportResult report = ReportWriter.write(this, result, finishedProfile, capabilities);
+                if (suiteRunning && finishedProfile != null) {
+                    suiteResults.add(ReportWriter.SuiteEntry.success(finishedProfile.id, report));
+                }
                 main.post(() -> {
                     String summary = String.format(Locale.US,
                             "%s\nCamera %.3f fps · gaps %d · missing~%d · max %.2f ms\nEncoder %.3f fps · gaps %d · missing~%d · max %.2f ms · repeatedPTS %d",
@@ -273,6 +288,9 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
                     }
                 });
             } catch (Throwable t) {
+                if (suiteRunning && finishedProfile != null) {
+                    suiteResults.add(ReportWriter.SuiteEntry.failure(finishedProfile.id, t));
+                }
                 main.post(() -> {
                     showError(t);
                     if (suiteRunning) {
@@ -286,10 +304,14 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
 
     @Override public void onError(Throwable error) {
         stopTickers();
+        final TestProfile failedProfile = activeProfile;
         recorder = null;
         activeProfile = null;
         showError(error);
         if (suiteRunning) {
+            if (failedProfile != null) {
+                suiteResults.add(ReportWriter.SuiteEntry.failure(failedProfile.id, error));
+            }
             suiteIndex++;
             main.postDelayed(this::runNextSuiteProfile, SUITE_COOLDOWN_MS);
         }
