@@ -2,6 +2,7 @@ package com.cameraframelab;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -10,6 +11,7 @@ import android.graphics.Color;
 import android.hardware.camera2.CameraManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -31,7 +33,7 @@ import java.util.Locale;
 public final class MainActivity extends Activity implements CameraRecorder.Listener {
     private static final int REQ_CAMERA = 41;
     private static final long SUITE_RECORD_MS = 10_000L;
-    private static final long SUITE_COOLDOWN_MS = 2_000L;
+    private static final long SUITE_COOLDOWN_MS = 3_000L;
 
     private Handler main;
     private CameraManager cameraManager;
@@ -310,7 +312,14 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         thermalTicker = new Runnable() {
             @Override public void run() {
                 if (recorder == null || activeProfile == null) return;
-                try { recorder.addThermalSample(currentThermalStatus(), batteryTempC()); } catch (Throwable ignored) {}
+                try {
+                    recorder.addThermalSample(
+                            currentThermalStatus(),
+                            batteryTempC(),
+                            availableMemoryBytes(),
+                            Debug.getPss()
+                    );
+                } catch (Throwable ignored) {}
                 main.postDelayed(this, 1000);
             }
         };
@@ -327,6 +336,18 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         if (i == null) return Float.NaN;
         int tenths = i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
         return tenths == Integer.MIN_VALUE ? Float.NaN : tenths / 10f;
+    }
+
+    private long availableMemoryBytes() {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) return -1L;
+            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.availMem;
+        } catch (Throwable ignored) {
+            return -1L;
+        }
     }
 
     private void stopTickers() {
