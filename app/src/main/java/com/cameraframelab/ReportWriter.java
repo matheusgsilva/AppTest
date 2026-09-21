@@ -611,11 +611,11 @@ public final class ReportWriter {
                     .append(0).append(',')
                     .append(0).append(',')
                     .append('"')
-                    .append(e.source.replace(""", "'"))
+                    .append(e.source.replace("\"", "'"))
                     .append(":")
-                    .append(e.type.replace(""", "'"))
+                    .append(e.type.replace("\"", "'"))
                     .append(";")
-                    .append(e.detail.replace(""", "'"))
+                    .append(e.detail.replace("\"", "'"))
                     .append('"').append('\n');
         }
         return b.toString();
