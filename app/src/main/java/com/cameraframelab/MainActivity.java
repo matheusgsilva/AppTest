@@ -18,6 +18,7 @@ import android.view.TextureView;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -91,11 +92,20 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
         TextView subtitle = text("Diagnóstico isolado: Camera2 sensor timestamps vs MediaCodec PTS", 13, false);
         root.addView(subtitle, lpMatchWrap(0, dp(6)));
 
+        FrameLayout previewContainer = new FrameLayout(this);
+        previewContainer.setBackgroundColor(Color.BLACK);
         preview = new TextureView(this);
-        preview.setBackgroundColor(Color.BLACK);
+        preview.setOpaque(false);
+        previewContainer.addView(
+                preview,
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
         LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
         previewLp.setMargins(0, dp(8), 0, dp(8));
-        root.addView(preview, previewLp);
+        root.addView(previewContainer, previewLp);
 
         profileSpinner = new Spinner(this);
         root.addView(profileSpinner, lpMatchWrap(0, dp(4)));
