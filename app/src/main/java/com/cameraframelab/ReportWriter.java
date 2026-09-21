@@ -141,8 +141,10 @@ public final class ReportWriter {
         o.put("product", Build.PRODUCT);
         o.put("board", Build.BOARD);
         o.put("hardware", Build.HARDWARE);
-        o.put("socManufacturer", Build.SOC_MANUFACTURER);
-        o.put("socModel", Build.SOC_MODEL);
+        if (Build.VERSION.SDK_INT >= 31) {
+            o.put("socManufacturer", Build.SOC_MANUFACTURER);
+            o.put("socModel", Build.SOC_MODEL);
+        }
         o.put("sdk", Build.VERSION.SDK_INT);
         o.put("release", Build.VERSION.RELEASE);
         o.put("incremental", Build.VERSION.INCREMENTAL);
