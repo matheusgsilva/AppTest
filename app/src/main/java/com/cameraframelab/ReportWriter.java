@@ -50,6 +50,72 @@ public final class ReportWriter {
         }
     }
 
+    public static final class SuiteEntry {
+        public final String profileId;
+        public final boolean success;
+        public final String error;
+        public final double cameraFps;
+        public final int cameraGaps;
+        public final int cameraMissing;
+        public final double encoderFps;
+        public final int encoderGaps;
+        public final int encoderMissing;
+        public final int repeatedPts;
+        public final double cameraMaxMs;
+        public final double encoderMaxMs;
+
+        private SuiteEntry(
+                String profileId,
+                boolean success,
+                String error,
+                double cameraFps,
+                int cameraGaps,
+                int cameraMissing,
+                double encoderFps,
+                int encoderGaps,
+                int encoderMissing,
+                int repeatedPts,
+                double cameraMaxMs,
+                double encoderMaxMs
+        ) {
+            this.profileId = profileId;
+            this.success = success;
+            this.error = error;
+            this.cameraFps = cameraFps;
+            this.cameraGaps = cameraGaps;
+            this.cameraMissing = cameraMissing;
+            this.encoderFps = encoderFps;
+            this.encoderGaps = encoderGaps;
+            this.encoderMissing = encoderMissing;
+            this.repeatedPts = repeatedPts;
+            this.cameraMaxMs = cameraMaxMs;
+            this.encoderMaxMs = encoderMaxMs;
+        }
+
+        public static SuiteEntry success(String profileId, ReportResult r) {
+            return new SuiteEntry(
+                    profileId, true, "",
+                    r.cameraStats.effectiveFps,
+                    r.cameraStats.gapCount,
+                    r.cameraStats.estimatedMissingFrames,
+                    r.encoderStats.effectiveFps,
+                    r.encoderStats.gapCount,
+                    r.encoderStats.estimatedMissingFrames,
+                    r.repeatedEncoderPts,
+                    r.cameraStats.maxMs,
+                    r.encoderStats.maxMs
+            );
+        }
+
+        public static SuiteEntry failure(String profileId, Throwable t) {
+            return new SuiteEntry(
+                    profileId, false,
+                    t == null ? "unknown" : t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()),
+                    0,0,0,0,0,0,0,0,0
+            );
+        }
+    }
+
     private ReportWriter() {}
 
     public static ReportResult write(
@@ -109,6 +175,59 @@ public final class ReportWriter {
                 summary, cameraCsv, encoderCsv, thermalCsv, eventsCsv,
                 cameraStats, encoderStats, repeatedPts
         );
+    }
+
+    public static Uri writeSuiteSummary(Context context, List<SuiteEntry> entries) throws Exception {
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new java.util.Date());
+        StringBuilder csv = new StringBuilder(
+                "profileId,success,error,cameraFps,cameraGaps,cameraMissing,cameraMaxMs," +
+                "encoderFps,encoderGaps,encoderMissing,encoderMaxMs,repeatedPts\n"
+        );
+        JSONArray jsonEntries = new JSONArray();
+        for (SuiteEntry e : entries) {
+            csv.append(csvSafe(e.profileId)).append(',')
+                    .append(e.success).append(',')
+                    .append(csvSafe(e.error)).append(',')
+                    .append(String.format(Locale.US, "%.6f", e.cameraFps)).append(',')
+                    .append(e.cameraGaps).append(',')
+                    .append(e.cameraMissing).append(',')
+                    .append(String.format(Locale.US, "%.6f", e.cameraMaxMs)).append(',')
+                    .append(String.format(Locale.US, "%.6f", e.encoderFps)).append(',')
+                    .append(e.encoderGaps).append(',')
+                    .append(e.encoderMissing).append(',')
+                    .append(String.format(Locale.US, "%.6f", e.encoderMaxMs)).append(',')
+                    .append(e.repeatedPts).append('\n');
+
+            JSONObject o = new JSONObject();
+            o.put("profileId", e.profileId);
+            o.put("success", e.success);
+            o.put("error", e.error);
+            o.put("cameraFps", e.cameraFps);
+            o.put("cameraGaps", e.cameraGaps);
+            o.put("cameraMissing", e.cameraMissing);
+            o.put("cameraMaxMs", e.cameraMaxMs);
+            o.put("encoderFps", e.encoderFps);
+            o.put("encoderGaps", e.encoderGaps);
+            o.put("encoderMissing", e.encoderMissing);
+            o.put("encoderMaxMs", e.encoderMaxMs);
+            o.put("repeatedPts", e.repeatedPts);
+            jsonEntries.put(o);
+        }
+
+        JSONObject root = new JSONObject();
+        root.put("schemaVersion", 1);
+        root.put("createdAt", stamp);
+        root.put("entries", jsonEntries);
+        root.put("count", entries.size());
+
+        writeSharedFile(context, stamp + "_suite_summary.json", "application/json", root.toString(2));
+        return writeSharedFile(context, stamp + "_suite_summary.csv", "text/csv", csv.toString());
+    }
+
+    private static String csvSafe(String value) {
+        if (value == null) return "";
+        String s = value.replace(""", """");
+        return """ + s + """;
     }
 
     private static JSONObject profileJson(TestProfile p) throws Exception {
