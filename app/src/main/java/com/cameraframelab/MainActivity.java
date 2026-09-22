@@ -339,7 +339,7 @@ public final class MainActivity extends Activity implements CameraRecorder.Liste
                             currentThermalStatus(),
                             batteryTempC(),
                             availableMemoryBytes(),
-                            Debug.getPss()
+                            (int) Math.min(Integer.MAX_VALUE, Debug.getPss())
                     );
                 } catch (Throwable ignored) {}
                 main.postDelayed(this, 1000);
