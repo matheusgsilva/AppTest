@@ -228,8 +228,8 @@ public final class ReportWriter {
 
     private static String csvSafe(String value) {
         if (value == null) return "";
-        String s = value.replace(""", """");
-        return """ + s + """;
+        String s = value.replace("\"", "\"\"");
+        return "\"" + s + "\"";
     }
 
     private static JSONObject profileJson(TestProfile p) throws Exception {
